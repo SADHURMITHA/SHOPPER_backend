@@ -5,17 +5,20 @@ const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const path = require("path");
 const cors = require("cors");
+const dotenv = require("dotenv")
+dotenv.config()
+console.log(process.env.PORT)
 const port = process.env.PORT || 4000;
 
 app.use(express.json());
 app.use(cors());
 
-// Database Connection With MongoDB
-mongoose.connect("mongodb+srv://sadhurmitha20_db_user:pMDZgP8JDoZHGKsg@cluster0.nijcrvl.mongodb.net/e-commerce").then(()=> console.log("Mongo connected successfully")).catch((err)=> console.log(err.message)
+
+mongoose.connect(process.env.DB_URL).then(()=> console.log("Mongo connected successfully")).catch((err)=> console.log(err.message)
 )
 
 
-//Image Storage Engine 
+
 const storage = multer.diskStorage({
   destination: './upload/images',
   filename: (req, file, cb) => {
@@ -31,18 +34,17 @@ app.post("/upload", upload.single('product'), (req, res) => {
 })
 
 
-// Route for Images folder
+
 app.use('/images', express.static('upload/images'));
 
 
-// MiddleWare to fetch user from token
 const fetchuser = async (req, res, next) => {
   const token = req.header("auth-token");
   if (!token) {
     res.status(401).send({ errors: "Please authenticate using a valid token" });
   }
   try {
-    const data = jwt.verify(token, "secret_ecom");
+    const data = jwt.verify(token,  process.env.JWT_SECRET);
     req.user = data.user;
     next();
   } catch (error) {
@@ -51,7 +53,7 @@ const fetchuser = async (req, res, next) => {
 };
 
 
-// Schema for creating user model
+
 const Users = mongoose.model("Users", {
   name: { type: String },
   email: { type: String, unique: true },
@@ -61,7 +63,7 @@ const Users = mongoose.model("Users", {
 });
 
 
-// Schema for creating Product
+
 const Product = mongoose.model("Product", {
   id: { type: Number, required: true },
   name: { type: String, required: true },
@@ -75,13 +77,13 @@ const Product = mongoose.model("Product", {
 });
 
 
-// ROOT API Route For Testing
+
 app.get("/", (req, res) => {
   res.send("Root");
 });
 
 
-// Create an endpoint at ip/login for login the user and giving auth-token
+
 app.post('/login', async (req, res) => {
   console.log("Login");
   let success = false;
@@ -96,7 +98,7 @@ app.post('/login', async (req, res) => {
       }
       success = true;
       console.log(user.id);
-      const token = jwt.sign(data, 'secret_ecom');
+      const token = jwt.sign(data, process.env.JWT_SECRET);
       res.json({ success, token });
     }
     else {
@@ -109,7 +111,7 @@ app.post('/login', async (req, res) => {
 })
 
 
-//Create an endpoint at ip/auth for regestring the user & sending auth-token
+
 app.post('/signup', async (req, res) => {
   console.log("Sign Up");
   let success = false;
@@ -134,13 +136,13 @@ app.post('/signup', async (req, res) => {
     }
   }
 
-  const token = jwt.sign(data, 'secret_ecom');
+  const token = jwt.sign(data, process.env.JWT_SECRET);
   success = true;
   res.json({ success, token })
 })
 
 
-// endpoint for getting all products data
+
 app.get("/allproducts", async (req, res) => {
   let products = await Product.find({});
   console.log("All Products");
@@ -148,7 +150,7 @@ app.get("/allproducts", async (req, res) => {
 });
 
 
-// endpoint for getting latest products data
+
 app.get("/newcollections", async (req, res) => {
   let products = await Product.find({});
   let arr = products.slice(0).slice(-8);
