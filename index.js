@@ -39,6 +39,8 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage });
 
+
+
 /* -------------------- Models -------------------- */
 const Users = mongoose.model("Users", {
   name: String,
@@ -60,6 +62,14 @@ const Product = mongoose.model("Product", {
   avilable: { type: Boolean, default: true },
 });
 
+const Orders = mongoose.model("Orders",{
+  orderId:String,
+  items:Array,
+  totalAmount:Number,
+  paymentMethod:String,
+  date:{type:Date,default:Date.now}
+});
+
 /* -------------------- Auth Middleware -------------------- */
 const fetchuser = async (req, res, next) => {
   const token = req.header("auth-token");
@@ -74,8 +84,36 @@ const fetchuser = async (req, res, next) => {
   }
 };
 
+
 /* -------------------- Routes -------------------- */
 app.get("/", (req, res) => res.send("API Running"));
+
+
+// endpoint for getting latest products data
+app.get("/newcollections", async (req, res) => {
+  let products = await Product.find({});
+  let arr = products.slice(0).slice(-8);
+  console.log("New Collections");
+  res.send(arr);
+});
+
+
+// endpoint for getting womens products data
+app.get("/popularinwomen", async (req, res) => {
+  let products = await Product.find({ category: "women" });
+  let arr = products.splice(0, 4);
+  console.log("Popular In Women");
+  res.send(arr);
+});
+
+// endpoint for getting womens products data
+app.post("/relatedproducts", async (req, res) => {
+  console.log("Related Products");
+  const {category} = req.body;
+  const products = await Product.find({ category });
+  const arr = products.slice(0, 4);
+  res.send(arr);
+});
 
 /* ---------- MERGED ADD PRODUCT ---------- */
 app.post("/addproduct", upload.single("product"), async (req, res) => {
@@ -137,6 +175,36 @@ app.post("/removeproduct", async (req, res) => {
 /* ---------- Products ---------- */
 app.get("/allproducts", async (req, res) => {
   res.json(await Product.find({}));
+});
+
+/* CREATE ORDER */
+app.post("/createorder",async(req,res)=>{
+  try{
+
+    const {items,totalAmount,paymentMethod}=req.body;
+
+    const orderId="ORD"+Date.now();
+
+    const order=new Orders({
+      orderId,
+      items,
+      totalAmount,
+      paymentMethod
+    });
+
+    await order.save();
+
+    res.json({success:true,order});
+
+  }catch(err){
+    console.error(err);
+    res.status(500).json({success:false});
+  }
+});
+
+/* GET ORDERS */
+app.get("/myorders",async(req,res)=>{
+  res.json(await Orders.find({}));
 });
 
 /* -------------------- Server -------------------- */
