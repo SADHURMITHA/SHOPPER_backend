@@ -109,6 +109,31 @@ app.post("/addproduct", upload.single("product"), async (req, res) => {
   }
 });
 
+/* ---------- Remove Product ---------- */
+app.post("/removeproduct", async (req, res) => {
+  try {
+    const { id } = req.body;
+    console.log(id)
+    const product = await Product.findOneAndDelete({ id: id });
+
+    if (!product) {
+      return res.json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Product removed successfully",
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+});
+
 /* ---------- Products ---------- */
 app.get("/allproducts", async (req, res) => {
   res.json(await Product.find({}));
