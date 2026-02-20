@@ -1,14 +1,13 @@
+require("dotenv").config();
+
 const express = require("express");
 const app = express();
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const cors = require("cors");
-const dotenv = require("dotenv");
 const cloudinary = require("cloudinary").v2;
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
-
-dotenv.config();
 
 const port = process.env.PORT || 4000;
 
@@ -36,16 +35,18 @@ const storage = new CloudinaryStorage({
     allowed_formats: ["jpg", "png", "jpeg"],
   },
 });
-
 const upload = multer({ storage });
 
-
-
 /* -------------------- Models -------------------- */
+
 const Users = mongoose.model("Users", {
   name: String,
   email: { type: String, unique: true },
   password: String,
+  role: {
+    type: String,
+    default: "user", // user or admin
+  },
   cartData: Object,
   date: { type: Date, default: Date.now },
 });
@@ -54,7 +55,7 @@ const Product = mongoose.model("Product", {
   id: Number,
   name: String,
   description: String,
-  image: String, // CLOUDINARY URL
+  image: String,
   category: String,
   new_price: Number,
   old_price: Number,
@@ -62,74 +63,65 @@ const Product = mongoose.model("Product", {
   avilable: { type: Boolean, default: true },
 });
 
-const Orders = mongoose.model("Orders",{
-  orderId:String,
-  items:Array,
-  totalAmount:Number,
-  paymentMethod:String,
-  date:{type:Date,default:Date.now}
+const Orders = mongoose.model("Orders", {
+  orderId: String,
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Users",
+  },
+  items: Array,
+  totalAmount: Number,
+  paymentMethod: String,
+  status: {
+    type: String,
+    default: "Pending",
+  },
+  date: { type: Date, default: Date.now },
 });
 
-/* -------------------- Auth Middleware -------------------- */
+/* -------------------- AUTH MIDDLEWARE -------------------- */
+
 const fetchuser = async (req, res, next) => {
   const token = req.header("auth-token");
-  if (!token) return res.status(401).send({ errors: "Auth failed" });
+
+  if (!token)
+    return res.status(401).json({ errors: "Auth failed" });
 
   try {
     const data = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = data.user;
+
+    const user = await Users.findById(data.user.id);
+
+    if (!user)
+      return res.status(401).json({ errors: "User not found" });
+
+    req.user = user;
+
     next();
   } catch {
-    res.status(401).send({ errors: "Auth failed" });
+    res.status(401).json({ errors: "Invalid token" });
   }
 };
 
 
 /* -------------------- Routes -------------------- */
+
 app.get("/", (req, res) => res.send("API Running"));
 
-
-// endpoint for getting latest products data
-app.get("/newcollections", async (req, res) => {
-  let products = await Product.find({});
-  let arr = products.slice(0).slice(-8);
-  console.log("New Collections");
-  res.send(arr);
-});
-
-
-// endpoint for getting womens products data
-app.get("/popularinwomen", async (req, res) => {
-  let products = await Product.find({ category: "women" });
-  let arr = products.splice(0, 4);
-  console.log("Popular In Women");
-  res.send(arr);
-});
-
-// endpoint for getting womens products data
-app.post("/relatedproducts", async (req, res) => {
-  console.log("Related Products");
-  const {category} = req.body;
-  const products = await Product.find({ category });
-  const arr = products.slice(0, 4);
-  res.send(arr);
-});
-
-/* ---------- MERGED ADD PRODUCT ---------- */
+/* ---------- ADD PRODUCT ---------- */
 app.post("/addproduct", upload.single("product"), async (req, res) => {
   try {
-    if (!req.file) {
+    if (!req.file)
       return res.status(400).json({ success: false, message: "Image required" });
-    }
 
     const products = await Product.find({});
     const id = products.length ? products[products.length - 1].id + 1 : 1;
-    console.log(req.file.path)
+
     const product = new Product({
       id,
       name: req.body.name,
       description: req.body.description,
-      image: req.file.path, // ✅ CLOUDINARY URL
+      image: req.file.path,
       category: req.body.category,
       new_price: req.body.new_price,
       old_price: req.body.old_price,
@@ -137,77 +129,133 @@ app.post("/addproduct", upload.single("product"), async (req, res) => {
 
     await product.save();
 
-    res.json({
-      success: true,
-      product,
-    });
+    res.json({ success: true, product });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ success: false });
   }
 });
 
-/* ---------- Remove Product ---------- */
-app.post("/removeproduct", async (req, res) => {
-  try {
-    const { id } = req.body;
-    console.log(id)
-    const product = await Product.findOneAndDelete({ id: id });
-
-    if (!product) {
-      return res.json({
-        success: false,
-        message: "Product not found",
-      });
+// Create an endpoint at ip/login for login the user and giving auth-token
+app.post('/login', async (req, res) => {
+  console.log("Login");
+  let success = false;
+  let user = await Users.findOne({ email: req.body.email });
+  if (user) {
+    const passCompare = req.body.password === user.password;
+    if (passCompare) {
+      const data = {
+        user: {
+          id: user.id
+        }
+      }
+      success = true;
+      console.log(user.id);
+      const token = jwt.sign(data, 'secret_ecom');
+      res.json({ success, token });
     }
-
-    res.json({
-      success: true,
-      message: "Product removed successfully",
-    });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false });
+    else {
+      return res.status(400).json({ success: success, errors: "please try with correct email/password" })
+    }
   }
-});
+  else {
+    return res.status(400).json({ success: success, errors: "please try with correct email/password" })
+  }
+})
 
-/* ---------- Products ---------- */
+
+//Create an endpoint at ip/auth for regestring the user & sending auth-token
+app.post('/signup', async (req, res) => {
+  console.log("Sign Up");
+  let success = false;
+  let check = await Users.findOne({ email: req.body.email });
+  if (check) {
+    return res.status(400).json({ success: success, errors: "existing user found with this email" });
+  }
+  let cart = {};
+  for (let i = 0; i < 300; i++) {
+    cart[i] = 0;
+  }
+  const user = new Users({
+    name: req.body.username,
+    email: req.body.email,
+    password: req.body.password,
+    cartData: cart,
+  });
+  await user.save();
+  const data = {
+    user: {
+      id: user.id
+    }
+  }
+
+  const token = jwt.sign(data, 'secret_ecom');
+  success = true;
+  res.json({ success, token })
+})
+
+
+/* ---------- ALL PRODUCTS ---------- */
 app.get("/allproducts", async (req, res) => {
   res.json(await Product.find({}));
 });
 
-/* CREATE ORDER */
-app.post("/createorder",async(req,res)=>{
-  try{
+/* ---------- CREATE ORDER (USER) ---------- */
+app.post("/createorder", fetchuser, async (req, res) => {
+  try {
+    const { items, totalAmount, paymentMethod } = req.body;
 
-    const {items,totalAmount,paymentMethod}=req.body;
+    const orderId = "ORD" + Date.now();
 
-    const orderId="ORD"+Date.now();
-
-    const order=new Orders({
+    const order = new Orders({
       orderId,
+      userId: req.user._id,
       items,
       totalAmount,
-      paymentMethod
+      paymentMethod,
     });
 
     await order.save();
 
-    res.json({success:true,order});
-
-  }catch(err){
-    console.error(err);
-    res.status(500).json({success:false});
+    res.json({ success: true, order });
+  } catch (err) {
+    res.status(500).json({ success: false });
   }
 });
 
-/* GET ORDERS */
-app.get("/myorders",async(req,res)=>{
-  res.json(await Orders.find({}));
+/* ---------- USER'S OWN ORDERS ---------- */
+app.get("/myorders", fetchuser, async (req, res) => {
+  const orders = await Orders.find({
+    userId: req.user._id,
+  });
+
+  res.json(orders);
+});
+
+/* ---------- ADMIN: GET ALL ORDERS ---------- */
+app.get("/admin/orders", async (req, res) => {
+  const orders = await Orders.find().populate("userId", "name email");
+
+  res.json(orders);
+});
+
+/* ---------- ADMIN: UPDATE ORDER STATUS ---------- */
+app.put("/admin/updateorder/:id", async (req, res) => {
+  try {
+    const { status } = req.body;
+
+    const order = await Orders.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
+    );
+
+    res.json({ success: true, order });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
 });
 
 /* -------------------- Server -------------------- */
 app.listen(port, () => {
-  console.log("🔥 Cloudinary server running on port " + port);
+  console.log("🔥 Server running on port " + port);
 });
