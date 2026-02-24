@@ -64,7 +64,15 @@ const Product = mongoose.model("Product", {
 const Orders = mongoose.model("Orders", {
   orderId: String,
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "Users" },
-  items: Array,
+  items: [
+    {
+      productId: Number,
+      name: String,
+      image: String,   // ✅ ADD THIS
+      price: Number,
+      quantity: Number,
+    }
+  ],
   totalAmount: Number,
   paymentMethod: String,
   status: { type: String, default: "Pending" },
@@ -184,10 +192,40 @@ app.get("/allproducts", async (req, res) => {
   res.json(await Product.find({}));
 });
 
+
+// Popular
+
+app.get("/newcollections", async (req, res) => {
+  let products = await Product.find({});
+  let arr = products.slice(0).slice(-8);
+  console.log("New Collections");
+  res.send(arr);
+});
+
+// endpoint for getting womens products data
+app.get("/popularinwomen", async (req, res) => {
+  let products = await Product.find({ category: "women" });
+  let arr = products.splice(0, 4);
+  console.log("Popular In Women");
+  res.send(arr);
+});
+
+// endpoint for getting womens products data
+app.post("/relatedproducts", async (req, res) => {
+  console.log("Related Products");
+  const {category} = req.body;
+  const products = await Product.find({ category });
+  const arr = products.slice(0, 4);
+  res.send(arr);
+});
+
+
 /* ---------- CREATE ORDER ---------- */
 app.post("/createorder", fetchuser, async (req, res) => {
   const { items, totalAmount, paymentMethod } = req.body;
 
+  console.log(req.user._id);
+  
   const order = new Orders({
     orderId: "ORD" + Date.now(),
     userId: req.user._id,
@@ -199,6 +237,35 @@ app.post("/createorder", fetchuser, async (req, res) => {
   await order.save();
   res.json({ success: true, order });
 });
+
+// Create an endpoint for saving the product in cart
+app.post('/addtocart', fetchuser, async (req, res) => {
+  console.log("Add Cart");
+  let userData = await Users.findOne({ _id: req.user.id });
+  userData.cartData[req.body.itemId] += 1;
+  await Users.findOneAndUpdate({ _id: req.user.id }, { cartData: userData.cartData });
+  res.send("Added")
+})
+
+
+// Create an endpoint for removing the product in cart
+app.post('/removefromcart', fetchuser, async (req, res) => {
+  console.log("Remove Cart");
+  let userData = await Users.findOne({ _id: req.user.id });
+  if (userData.cartData[req.body.itemId] != 0) {
+    userData.cartData[req.body.itemId] -= 1;
+  }
+  await Users.findOneAndUpdate({ _id: req.user.id }, { cartData: userData.cartData });
+  res.send("Removed");
+})
+
+app.post('/getcart', fetchuser, async (req, res) => {
+  console.log("Get Cart");
+  let userData = await Users.findOne({ _id: req.user.id });
+  res.json(userData.cartData);
+
+})
+
 
 /* ---------- MY ORDERS ---------- */
 app.get("/myorders", fetchuser, async (req, res) => {
@@ -213,16 +280,26 @@ app.get("/admin/orders", async (req, res) => {
 });
 
 /* ---------- UPDATE ORDER STATUS ---------- */
-app.put("/admin/updateorder/:id", async (req, res) => {
-  const order = await Orders.findByIdAndUpdate(
-    req.params.id,
-    { status: req.body.status },
-    { new: true }
-  );
+// PATCH – Update order status (UNPROTECTED)
+app.patch("/admin/order/status/:orderId", async (req, res) => {
+  try {
+    const { status } = req.body;
 
-  res.json({ success: true, order });
+    const order = await Orders.findByIdAndUpdate(
+      req.params.orderId,
+      { status },
+      { new: true }
+    );
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    res.json({ success: true, order });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Server error" });
+  }
 });
-
 /* -------------------- Server -------------------- */
 app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);
